@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>执行计划编辑 · 数据调度平台</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="app">
+  <div id="sidebarMount"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--sub)">
+        <a href="/" style="color:inherit;text-decoration:none">执行总览</a><span>/</span><b id="crumb" style="color:var(--text)">新建执行计划</b>
+      </div>
+      <div class="top-actions">
+        <button class="btn ghost" id="btnDelete" style="display:none">删除</button>
+        <button class="btn outline" id="btnSave">保存计划</button>
+        <button class="btn primary" id="btnRun">试运行</button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 1 基础信息 -->
+      <section class="sec">
+        <div class="sec-h">
+          <div class="sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+          <div class="sec-t">任务基础信息</div>
+          <div class="sec-d">定义名称、归属与调度策略（周期 + 执行时间自动生成 cron，复杂场景可自定义）</div>
+          <div class="right"><span style="font-size:12px;color:var(--text-2)">启用调度</span><label class="sw"><input type="checkbox" id="f-enabled"><span></span></label></div>
+        </div>
+        <div class="f-grid c3" style="margin-bottom:13px">
+          <div class="fld"><label>任务名称<span class="req">*</span></label><input class="inp" id="f-name" placeholder="如：日常监控日报"></div>
+          <div class="fld"><label>任务分组</label><input class="inp" id="f-grp" placeholder="如：经营监控 / 日报"></div>
+          <div class="fld"><label>超时（分钟）/ 失败重试</label>
+            <div style="display:flex;gap:8px">
+              <input class="inp" id="f-timeout" type="number" value="30" min="1">
+              <input class="inp" id="f-retry" type="number" value="0" min="0" max="10">
+            </div></div>
+        </div>
+        <div class="f-grid c3">
+          <div class="fld"><label>负责人</label><input class="inp" id="f-owner" placeholder="姓名 / 科室"></div>
+          <div class="fld"><label>调度周期</label>
+            <select class="sel" id="f-cron-cycle">
+              <option value="workday">工作日</option>
+              <option value="daily">每日</option>
+              <option value="weekly">每周</option>
+              <option value="monthly">每月</option>
+              <option value="quarterly">每季度</option>
+              <option value="hourly">每小时整点</option>
+              <option value="custom">自定义</option>
+            </select></div>
+          <div class="fld"><label>执行时间</label>
+            <div style="display:flex;gap:8px">
+              <input class="inp" id="f-cron-time" type="time" value="09:00">
+              <select class="sel" id="f-cron-week" style="display:none">
+                <option value="1">周一</option><option value="2">周二</option><option value="3">周三</option>
+                <option value="4">周四</option><option value="5">周五</option><option value="6">周六</option><option value="0">周日</option>
+              </select>
+              <input class="inp" id="f-cron-day" type="number" min="1" max="31" value="1" style="display:none" title="1–31；当月无此日期则不触发（如 2 月无 30 日）">
+            </div></div>
+        </div>
+        <div class="f-grid c2" id="cronRow" style="display:none">
+          <div class="fld"><label>Cron 表达式（由周期与时间自动生成，自定义周期时可手工修改）</label><input class="inp mono" id="f-cron" value="0 9 * * 1-5"></div>
+        </div>
+      </section>
+
+      <!-- 2 前置文件 -->
+      <section class="sec">
+        <div class="sec-h">
+          <div class="sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></div>
+          <div class="sec-t">前置文件检查</div>
+          <div class="sec-d">所有源文件齐备后才开始执行（移植旧脚本等待重试机制）</div>
+          <div class="right">
+            <span style="font-size:11.6px;color:var(--text-2)">重试间隔(秒)</span><input class="inp" id="f-wait-interval" type="number" value="600" style="width:84px">
+            <span style="font-size:11.6px;color:var(--text-2)">最大重试</span><input class="inp" id="f-wait-retry" type="number" value="10" style="width:64px">
+            <span style="font-size:11.6px;color:var(--text-2)">每轮飞书提醒</span><label class="sw"><input type="checkbox" id="f-wait-notify"><span></span></label>
+            <button class="btn-mini" id="btn-add-wf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="width:13px;height:13px"><path d="M12 5v14M5 12h14"/></svg>添加文件</button>
+          </div>
+        </div>
+        <div class="cfg-head g-reads"><span></span><span>别名</span><span>类型</span><span>文件路径（支持日期占位符）</span><span class="hide-sm">—</span><span class="hide-sm">—</span><span class="hide-sm">—</span><span></span></div>
+        <div id="list-wf"></div>
+        <div class="ph-hint">
+          <span class="ph">{{yyyy}}</span><span class="ph">{{MM}}</span><span class="ph">{{dd}}</span>
+          <span class="ph">{{yyyyMMdd}}</span><span class="ph">{{mmdd}}</span><span class="ph">{{t1_6bit}}</span>
+          <span class="ph">{{biz_date}}</span><span class="ph">${biz_date}</span>
+        </div>
+      </section>
+
+      <!-- 3 SQL 步骤 -->
+      <section class="sec">
+        <div class="sec-h">
+          <div class="sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+          <div class="sec-t">SQL 执行步骤</div>
+          <div class="sec-d">按顺序执行；一段文本内可用分号分隔多条 SQL，DDL/DML 自动提交</div>
+          <div class="right"><span class="tag-count" id="cnt-sql">0 步</span><button class="btn-mini" id="btn-add-sql"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="width:13px;height:13px"><path d="M12 5v14M5 12h14"/></svg>新增步骤</button></div>
+        </div>
+        <div id="list-sql"></div>
+      </section>
+
+      <!-- 4 Excel 读取 -->
+      <section class="sec">
+        <div class="sec-h">
+          <div class="sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg></div>
+          <div class="sec-t">Excel 数据源读取</div>
+          <div class="sec-d">从源文件按区域读取，结果放入变量，供模板写入使用</div>
+          <div class="right"><span class="tag-count" id="cnt-read">0 个</span><button class="btn-mini" id="btn-add-read"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="width:13px;height:13px"><path d="M12 5v14M5 12h14"/></svg>添加来源</button></div>
+        </div>
+        <div class="cfg-head g-reads"><span></span><span>来源别名</span><span>Sheet</span><span>文件路径（支持日期占位符）</span><span>起始格</span><span>结束格</span><span>结果变量</span><span></span></div>
+        <div id="list-read"></div>
+        <div class="ph-hint">
+          <span class="ph">{{yyyy}}</span><span class="ph">{{MM}}</span><span class="ph">{{dd}}</span>
+          <span class="ph">{{yyyyMMdd}}</span><span class="ph">{{mmdd}}</span><span class="ph">{{t1_6bit}}</span>
+          <span class="ph">{{biz_date}}</span><span class="ph">${biz_date}</span>
+        </div>
+      </section>
+
+      <!-- 5 模板写入 -->
+      <section class="sec">
+        <div class="sec-h">
+          <div class="sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><path d="M12 19h8"/></svg></div>
+          <div class="sec-t">Excel 模板写入与输出</div>
+          <div class="sec-d">打开模板 → 把变量粘贴到指定 sheet/单元格 → 另存 → 可选 COM 全量重算公式</div>
+          <div class="right"><span class="tag-count" id="cnt-tpl">0 个</span><button class="btn-mini" id="btn-add-tpl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="width:13px;height:13px"><path d="M12 5v14M5 12h14"/></svg>添加模板</button></div>
+        </div>
+        <div id="list-tpl"></div>
+      </section>
+
+      <!-- 6 Python -->
+      <section class="sec">
+        <div class="sec-h">
+          <div class="sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.5-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.6a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.5l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1A1.7 1.7 0 0 0 21 11a2 2 0 1 1 0 4z"/></svg></div>
+          <div class="sec-t">Python 自定义处理（可选）</div>
+          <div class="sec-d">在 SQL/Excel 取数完成后运行，可用 to_df('变量名') 取 pandas DataFrame，OUTPUT_DIR 为输出目录</div>
+          <div class="right"><label class="sw"><input type="checkbox" id="f-py-on"><span></span></label></div>
+        </div>
+        <div class="code">
+          <div class="code-gut" id="py-gut"></div>
+          <textarea class="code-area" id="f-py-code" spellcheck="false" placeholder="# vars：全部结果变量&#10;df = to_df('df_sql_1')&#10;df.to_csv(OUTPUT_DIR + '/result.csv', index=False, encoding='utf-8-sig')"></textarea>
+        </div>
+      </section>
+
+      <!-- 7 输出 + 飞书 -->
+      <section class="sec">
+        <div class="sec-h">
+          <div class="sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg></div>
+          <div class="sec-t">输出目录与飞书通知</div>
+        </div>
+        <div class="f-grid c2" style="margin-bottom:13px">
+          <div class="fld"><label>输出目录（支持占位符）<span class="req">*</span></label>
+            <input class="inp mono" id="f-output-dir" placeholder="如：\\server\报表\{{mmdd}} 或留空使用平台 data/outputs">
+            <div class="hint">模板输出文件会保存在该目录；「依赖读取」也从该目录读取上一个模板产物</div></div>
+          <div class="fld"><label>本任务专用 Webhook（留空用系统设置）</label>
+            <input class="inp mono" id="f-webhook" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/...">
+            <div class="hint">失败/成功是否推送同时受下方开关与系统总开关控制</div></div>
+        </div>
+        <div class="f-grid c3" style="margin-bottom:13px">
+          <div class="fld"><label>成功时通知</label><label class="sw"><input type="checkbox" id="f-notify-ok"><span></span></label></div>
+          <div class="fld"><label>失败时通知</label><label class="sw"><input type="checkbox" id="f-notify-err"><span></span></label></div>
+          <div class="fld"><label>消息模板（可空）</label></div>
+        </div>
+        <div class="fld">
+          <textarea class="ta mono" id="f-notify-tpl" style="min-height:80px" placeholder="【{{任务名}}】执行{{状态}}&#10;执行时间：{{执行时间}}　耗时：{{耗时}}&#10;结果文件：{{文件路径}}"></textarea>
+          <div class="ph-hint">
+            <span class="ph">{{任务名}}</span><span class="ph">{{状态}}</span><span class="ph">{{执行时间}}</span>
+            <span class="ph">{{耗时}}</span><span class="ph">{{文件路径}}</span><span class="ph">{{错误}}</span>
+          </div>
+        </div>
+      </section>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;padding:4px 0 30px">
+        <a class="btn ghost" href="/">返回总览</a>
+        <button class="btn outline" id="btnSave2">保存计划</button>
+        <button class="btn primary" id="btnRun2">保存并试运行</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 试运行日志抽屉 -->
+<div class="drawer" id="drawer">
+  <div class="drawer-h">
+    <span>试运行控制台</span><span class="badge" id="run-badge">运行中</span>
+    <span id="run-title" style="font-weight:400;font-size:11.6px;color:#9aa1af"></span>
+    <button class="close" id="drawer-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</div>
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="/js/common.js"></script>
+<script>
+mountSidebar('console');
+let dsList = [];
+const biz_date = '${biz_date}';  /* 仅用于提示文本中显示占位符写法 */
+let T = blankTask();
+let pollTimer = null;
+
+const qsId = new URLSearchParams(location.search).get('id');
+
+function blankTask() {
+  return { id: null, name: '', grp: '', owner: '', cron: '0 9 * * 1-5', timeout_min: 30, retry_times: 0, enabled: false,
+    config: { wait_interval: 600, wait_retry: 10, wait_notify_each: false, wait_files: [],
+      excel_reads: [], sql_steps: [], templates: [], output_dir: '',
+      python_enabled: false, python_code: '',
+      notify: { on_success: false, on_failure: true, webhook: '', template: '' } } };
+}
+const C = () => T.config;
+
+/* ---------------- 收集 DOM ---------------- */
+function collect() {
+  T.name = g('f-name').value.trim();
+  T.grp = g('f-grp').value.trim();
+  T.owner = g('f-owner').value.trim();
+  T.cron = g('f-cron').value.trim() || '0 9 * * 1-5';
+  T.timeout_min = +g('f-timeout').value || 30;
+  T.retry_times = +g('f-retry').value || 0;
+  T.enabled = g('f-enabled').checked;
+  C().wait_interval = +g('f-wait-interval').value || 0;
+  C().wait_retry = +g('f-wait-retry').value || 0;
+  C().wait_notify_each = g('f-wait-notify').checked;
+
+  C().wait_files = [...document.querySelectorAll('[data-wf]')].map(row => ({
+    name: row.querySelector('[data-f="name"]').value,
+    path: row.querySelector('[data-f="path"]').value
+  }));
+
+  C().excel_reads = [...document.querySelectorAll('[data-read]')].map(row => ({
+    alias: row.querySelector('[data-f="alias"]').value,
+    sheet: row.querySelector('[data-f="sheet"]').value,
+    path: row.querySelector('[data-f="path"]').value,
+    start: row.querySelector('[data-f="start"]').value,
+    end: row.querySelector('[data-f="end"]').value,
+    var: row.querySelector('[data-f="var"]').value
+  }));
+
+  C().sql_steps = [...document.querySelectorAll('[data-sql]')].map(card => ({
+    name: card.querySelector('[data-f="name"]').value,
+    datasource_id: +card.querySelector('[data-f="ds"]').value || null,
+    segment: +card.querySelector('[data-f="segment"]').value || 0,
+    var: card.querySelector('[data-f="var"]').value,
+    sql: card.querySelector('[data-f="sql"]').value,
+    source: card.querySelector('[data-f="sqlmode"]').value,
+    sql_path: card.querySelector('[data-f="sqlpath"]').value
+  }));
+
+  C().templates = [...document.querySelectorAll('[data-tpl]')].map(tpl => ({
+    name: tpl.querySelector('[data-f="tname"]').value,
+    path: tpl.querySelector('[data-f="tpath"]').value,
+    output: tpl.querySelector('[data-f="output"]').value,
+    recalc: tpl.querySelector('[data-f="recalc"]').checked,
+    reads_before: [...tpl.querySelectorAll('[data-rb]')].map(rb => ({
+      from_output: true,
+      file: rb.querySelector('[data-f="rbfile"]').value,
+      sheet: rb.querySelector('[data-f="rbsheet"]').value,
+      start: rb.querySelector('[data-f="rbstart"]').value,
+      end: rb.querySelector('[data-f="rbend"]').value,
+      var: rb.querySelector('[data-f="rbvar"]').value
+    })),
+    writes: [...tpl.querySelectorAll('[data-wr]')].map(wr => {
+      const mode = wr.querySelector('[data-f="wmode"]').value;
+      const item = { sheet: wr.querySelector('[data-f="wsheet"]').value, cell: wr.querySelector('[data-f="wcell"]').value };
+      if (mode === 'merge') item.merge = wr.querySelector('[data-f="wmerge"]').value.split(',').map(s => s.trim()).filter(Boolean);
+      else item.var = wr.querySelector('[data-f="wvar"]').value;
+      return item;
+    })
+  }));
+  T.cleaned = false;  /* 标记：尚未做提交前清理 */
+
+  C().python_enabled = g('f-py-on').checked;
+  C().python_code = g('f-py-code').value;
+  C().output_dir = g('f-output-dir').value.trim();
+  C().notify.webhook = g('f-webhook').value.trim();
+  C().notify.on_success = g('f-notify-ok').checked;
+  C().notify.on_failure = g('f-notify-err').checked;
+  C().notify.template = g('f-notify-tpl').value;
+}
+function g(id) { return document.getElementById(id); }
+
+function allVars() {
+  const c = C();
+  return [...(c.sql_steps || []).map(s => s.var), ...(c.excel_reads || []).map(r => r.var),
+          ...(c.templates || []).flatMap(t => [...(t.reads_before || []).map(r => r.var)])].filter(Boolean);
+}
+
+/* ---------------- 渲染 ---------------- */
+function renderTop() {
+  g('f-name').value = T.name; g('f-grp').value = T.grp; g('f-owner').value = T.owner;
+  g('f-cron').value = T.cron; g('f-timeout').value = T.timeout_min; g('f-retry').value = T.retry_times;
+  g('f-enabled').checked = !!T.enabled;
+  g('f-wait-interval').value = C().wait_interval; g('f-wait-retry').value = C().wait_retry;
+  g('f-wait-notify').checked = !!C().wait_notify_each;
+  g('f-py-on').checked = !!C().python_enabled; g('f-py-code').value = C().python_code || '';
+  g('f-output-dir').value = C().output_dir || '';
+  g('f-webhook').value = (C().notify || {}).webhook || '';
+  g('f-notify-ok').checked = !!(C().notify || {}).on_success;
+  g('f-notify-err').checked = C().notify ? C().notify.on_failure !== false : true;
+  g('f-notify-tpl').value = (C().notify || {}).template || '';
+  g('crumb').textContent = T.name || '新建执行计划';
+  g('btnDelete').style.display = T.id ? '' : 'none';
+  syncGut('py-gut', g('f-py-code'));
+  /* 解析 cron → 调度周期 + 执行时间；无法识别的走"自定义" */
+  const cm = (T.cron || '').trim().split(/\s+/);
+  let cyc = 'custom';
+  const setTime = () => { g('f-cron-time').value = `${String(+cm[1]).padStart(2, '0')}:${String(+cm[0]).padStart(2, '0')}`; };
+  if (cm.length === 5) {
+    const [mi, h, dom, mon, dow] = cm;
+    if (mi === '0' && h === '*' && dom === '*' && mon === '*' && dow === '*') cyc = 'hourly';
+    else if (mon === '1,4,7,10' && dow === '*' && /^\d{1,2}$/.test(mi) && /^\d{1,2}$/.test(h) && /^\d{1,2}$/.test(dom)) {
+      cyc = 'quarterly'; g('f-cron-day').value = String(+dom); setTime();
+    }
+    else if (dom === '*' && mon === '*' && /^\d{1,2}$/.test(mi) && /^\d{1,2}$/.test(h)) {
+      if (dow === '1-5') { cyc = 'workday'; setTime(); }
+      else if (dow === '*') { cyc = 'daily'; setTime(); }
+      else if (/^[0-6]$/.test(dow)) { cyc = 'weekly'; g('f-cron-week').value = dow; setTime(); }
+    }
+    else if (dow === '*' && mon === '*' && /^\d{1,2}$/.test(mi) && /^\d{1,2}$/.test(h) && /^\d{1,2}$/.test(dom)) {
+      cyc = 'monthly'; g('f-cron-day').value = String(+dom); setTime();
+    }
+  }
+  g('f-cron-cycle').value = cyc;
+  syncCronExtras();
+}
+
+function dsOptions(cur) {
+  return dsList.map(d => `<option value="${d.id}" ${+cur === d.id ? 'selected' : ''}>${esc(d.name)}（${d.db_type}）</option>`).join('');
+}
+
+function delMoveBtns(kind, i, len) {
+  return `<button class="icon-btn" data-act="up" title="上移" ${i === 0 ? 'disabled style:opacity:.3' : ''}>${ICO.up}</button>
+          <button class="icon-btn" data-act="down" title="下移" ${i === len - 1 ? 'disabled style:opacity:.3' : ''}>${ICO.down}</button>
+          <button class="icon-btn danger" data-act="del" title="删除">${ICO.trash}</button>`;
+}
+
+function renderSql() {
+  const steps = C().sql_steps;
+  g('cnt-sql').textContent = steps.length + ' 步';
+  g('list-sql').innerHTML = steps.map((s, i) => {
+    const isFile = s.source === 'file';
+    return `
+    <div class="step" data-sql="${i}">
+      <div class="step-h">
+        <button class="icon-btn" data-act="fold" title="折叠">${ICO.down}</button>
+        <span class="step-no">${i + 1}</span>
+        <input class="inp" data-f="name" value="${esc(s.name)}" placeholder="步骤名称" style="flex:1;min-width:140px">
+        <select class="sel" data-f="ds" title="数据源">${dsOptions(s.datasource_id)}</select>
+        <select class="sel" data-f="sqlmode" title="SQL 来源方式">
+          <option value="inline"${!isFile ? ' selected' : ''}>内联编辑</option>
+          <option value="file"${isFile ? ' selected' : ''}>引用文件</option>
+        </select>
+        <button class="btn-mini" data-act="import-sql" title="从本地 .sql / .txt 文件导入 SQL 内容到编辑框" style="${isFile ? 'display:none' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:13px;height:13px"><path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-8L9.6 4.6A1.5 1.5 0 0 0 8.5 4H4a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1z"/></svg>导入SQL</button>
+        <input type="file" data-f="sqlfile" accept=".sql,.txt" style="display:none">
+        ${delMoveBtns('sql', i, steps.length)}
+      </div>
+      <div class="step-body">
+        <div class="code" style="${isFile ? 'display:none' : ''}">
+          <div class="code-gut"></div>
+          <textarea class="code-area" data-f="sql" spellcheck="false" placeholder="-- 手工编辑 SQL，或点右上「导入SQL」选择本地 .sql 文件；多段用分号分隔，可用 {{yyyyMMdd}} / ${biz_date} 占位符">${esc(s.sql)}</textarea>
+        </div>
+        <div class="sqlpath-row" style="display:${isFile ? 'flex' : 'none'};align-items:center;gap:8px">
+          <span class="chip-tag">服务器文件路径</span>
+          <input class="inp mono" data-f="sqlpath" value="${esc(s.sql_path || '')}" placeholder="\\\\server\\sql\\代码1_月累计预算{{yyyyMMdd}}.sql" style="flex:1">
+        </div>
+        <div class="step-f">
+          <span class="chip-tag">结果变量</span><input class="var-inp" data-f="var" value="${esc(s.var)}" placeholder="df_sql_1">
+          <span class="chip-tag" style="margin-left:auto">取结果段(0起)</span><input class="var-inp" style="width:64px" type="number" min="0" data-f="segment" value="${s.segment || 0}">
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  g('list-sql').querySelectorAll('textarea').forEach(t => {
+    syncGutEl(t);
+    t.addEventListener('scroll', () => syncGutEl(t));
+    t.addEventListener('input', () => syncGutEl(t));
+  });
+}
+
+function renderWf() {
+  g('list-wf').innerHTML = C().wait_files.map((f, i) => `
+    <div class="cfg-row g-reads" data-wf="${i}">
+      <span class="cell muted" style="text-align:center">${i + 1}</span>
+      <input class="inp" data-f="name" value="${esc(f.name)}" placeholder="别名">
+      <input class="inp" value="文件" disabled>
+      <input class="inp mono" data-f="path" value="${esc(f.path)}" placeholder="\\server\目录\文件{{yyyyMMdd}}.xlsx">
+      <span></span><span></span><span></span>
+      <button class="icon-btn danger" data-act="del">${ICO.trash}</button>
+    </div>`).join('');
+}
+
+function renderRead() {
+  const rs = C().excel_reads;
+  g('cnt-read').textContent = rs.length + ' 个';
+  g('list-read').innerHTML = rs.map((r, i) => `
+    <div class="cfg-row g-reads" data-read="${i}">
+      <span class="cell muted" style="text-align:center">${i + 1}</span>
+      <input class="inp" data-f="alias" value="${esc(r.alias)}" placeholder="别名">
+      <input class="inp" data-f="sheet" value="${esc(r.sheet)}" placeholder="Sheet名">
+      <input class="inp mono" data-f="path" value="${esc(r.path)}" placeholder="源文件路径（支持占位符）">
+      <input class="inp mono" data-f="start" value="${esc(r.start)}" placeholder="A1">
+      <input class="inp mono" data-f="end" value="${esc(r.end)}" placeholder="N22">
+      <input class="inp mono" data-f="var" value="${esc(r.var)}" placeholder="变量名">
+      <button class="icon-btn danger" data-act="del">${ICO.trash}</button>
+    </div>`).join('');
+}
+
+function varDatalist() {
+  const vs = [...new Set(allVars())];
+  return `<datalist id="varlist">${vs.map(v => `<option value="${esc(v)}">`).join('')}</datalist>`;
+}
+
+function renderTpl() {
+  const ts = C().templates;
+  g('cnt-tpl').textContent = ts.length + ' 个';
+  g('list-tpl').innerHTML = varDatalist() + ts.map((t, ti) => `
+    <div class="step" data-tpl="${ti}" style="background:#fff">
+      <div class="step-h">
+        <span class="step-no">${ti + 1}</span>
+        <input class="inp" data-f="tname" value="${esc(t.name)}" placeholder="模板名称" style="flex:0 0 150px">
+        <input class="inp mono" data-f="tpath" value="${esc(t.path)}" placeholder="模板文件路径（支持占位符）" style="flex:1;min-width:220px">
+        <input class="inp mono" data-f="output" value="${esc(t.output)}" placeholder="输出文件名，如 日报{{mmdd}}.xlsx" style="flex:0 0 210px">
+        <span style="font-size:11.4px;color:var(--text-2)">保存后重算公式</span>
+        <label class="sw"><input type="checkbox" data-f="recalc" ${t.recalc !== false ? 'checked' : ''}><span></span></label>
+        <button class="icon-btn danger" data-act="del-tpl">${ICO.trash}</button>
+      </div>
+      <div style="margin:4px 0 10px">
+        <div style="font-size:11.2px;font-weight:600;color:var(--sub);margin:6px 2px">依赖读取（可选：从本任务已生成的产物文件取数，用于多模板级联）</div>
+        ${(t.reads_before || []).map((rb, j) => `
+        <div class="cfg-row" style="grid-template-columns:200px 110px 70px 70px minmax(120px,1fr) 28px;gap:8px" data-rb="${j}">
+          <input class="inp mono" data-f="rbfile" value="${esc(rb.file)}" placeholder="输出目录中的产物文件名">
+          <input class="inp" data-f="rbsheet" value="${esc(rb.sheet)}" placeholder="Sheet">
+          <input class="inp mono" data-f="rbstart" value="${esc(rb.start)}" placeholder="C1">
+          <input class="inp mono" data-f="rbend" value="${esc(rb.end)}" placeholder="D32">
+          <input class="inp mono" data-f="rbvar" value="${esc(rb.var)}" placeholder="结果变量">
+          <button class="icon-btn danger" data-act="del-rb">${ICO.trash}</button>
+        </div>`).join('')}
+        <button class="btn-mini" data-act="add-rb">${ICO.plus}添加依赖读取</button>
+      </div>
+      <div style="font-size:11.2px;font-weight:600;color:var(--sub);margin:6px 2px">写入映射</div>
+      ${(t.writes || []).map((w, j) => `
+      <div class="cfg-row" style="grid-template-columns:24px minmax(130px,1fr) 80px 104px minmax(150px,1.2fr) 28px;gap:8px" data-wr="${j}">
+        <span class="cell muted" style="text-align:center">${j + 1}</span>
+        <input class="inp" data-f="wsheet" value="${esc(w.sheet)}" placeholder="目标 Sheet">
+        <input class="inp mono" data-f="wcell" value="${esc(w.cell)}" placeholder="A1">
+        <select class="sel" data-f="wmode">
+          <option value="var" ${w.merge ? '' : 'selected'}>单变量</option>
+          <option value="merge" ${w.merge ? 'selected' : ''}>横向合并</option>
+        </select>
+        ${w.merge
+          ? `<input class="inp mono" data-f="wmerge" value="${esc(w.merge.join(','))}" placeholder="var1,var2">
+             <input class="inp mono" data-f="wvar" style="display:none">`
+          : `<input class="inp mono" data-f="wvar" value="${esc(w.var)}" list="varlist" placeholder="来源变量">
+             <input class="inp mono" data-f="wmerge" style="display:none">`}
+        <button class="icon-btn danger" data-act="del-wr">${ICO.trash}</button>
+      </div>`).join('')}
+      <button class="btn-mini" data-act="add-wr">${ICO.plus}添加写入映射</button>
+    </div>`).join('');
+}
+
+function renderAll() { renderTop(); renderSql(); renderWf(); renderRead(); renderTpl(); }
+
+function syncGutEl(ta) {
+  const gut = ta.parentElement.querySelector('.code-gut');
+  if (!gut) return;
+  const n = ta.value.split('\n').length;
+  gut.innerHTML = Array.from({ length: n }, (_, i) => i + 1).join('<br>');
+}
+function syncGut(gutId, ta) {
+  const gut = document.getElementById(gutId);
+  if (!gut) return;
+  const n = (ta.value || '').split('\n').length;
+  gut.innerHTML = Array.from({ length: n }, (_, i) => i + 1).join('<br>');
+}
+
+/* ---------------- 事件：增删移动 ---------------- */
+function mutate(fn) { collect(); fn(); renderAll(); }
+
+g('btn-add-sql').onclick = () => mutate(() => C().sql_steps.push({ name: '', datasource_id: dsList[0]?.id, segment: 0, var: 'df_sql_' + (C().sql_steps.length + 1), source: 'file', sql: '', sql_path: '' }));
+g('btn-add-wf').onclick = () => mutate(() => C().wait_files.push({ name: '文件' + (C().wait_files.length + 1), path: '' }));
+g('btn-add-read').onclick = () => mutate(() => C().excel_reads.push({ alias: '', path: '', sheet: 'Sheet1', start: 'A1', end: 'Z100', var: 'df_excel_' + (C().excel_reads.length + 1) }));
+g('btn-add-tpl').onclick = () => mutate(() => C().templates.push({ name: '模板' + (C().templates.length + 1), path: '', output: '输出{{mmdd}}.xlsx', recalc: true, reads_before: [], writes: [] }));
+
+document.addEventListener('click', e => {
+  const act = e.target.closest('[data-act]');
+  if (!act) return;
+  const a = act.dataset.act;
+
+  if (a === 'fold') { const card = act.closest('.step'); card.classList.toggle('collapsed'); return; }
+  if (a === 'import-sql') { act.closest('[data-sql]').querySelector('[data-f="sqlfile"]').click(); return; }
+
+  const sqlCard = act.closest('[data-sql]');
+  if (sqlCard && (a === 'del' || a === 'up' || a === 'down')) {
+    const i = +sqlCard.dataset.sql;
+    mutate(() => {
+      if (a === 'del') C().sql_steps.splice(i, 1);
+      if (a === 'up' && i > 0) [C().sql_steps[i - 1], C().sql_steps[i]] = [C().sql_steps[i], C().sql_steps[i - 1]];
+      if (a === 'down' && i < C().sql_steps.length - 1) [C().sql_steps[i + 1], C().sql_steps[i]] = [C().sql_steps[i], C().sql_steps[i + 1]];
+    });
+    return;
+  }
+  const wfRow = act.closest('[data-wf]');
+  if (wfRow && a === 'del') { const i = +wfRow.dataset.wf; mutate(() => C().wait_files.splice(i, 1)); return; }
+  const rdRow = act.closest('[data-read]');
+  if (rdRow && a === 'del') { const i = +rdRow.dataset.read; mutate(() => C().excel_reads.splice(i, 1)); return; }
+
+  const tplCard = act.closest('[data-tpl]');
+  if (tplCard) {
+    const ti = +tplCard.dataset.tpl;
+    collect();
+    if (a === 'del-tpl') { C().templates.splice(ti, 1); renderAll(); return; }
+    if (a === 'add-rb') { C().templates[ti].reads_before.push({ from_output: true, file: '', sheet: '', start: 'A1', end: 'Z100', var: 'rb_' + (C().templates[ti].reads_before.length + 1) }); renderAll(); return; }
+    if (a === 'add-wr') { C().templates[ti].writes.push({ sheet: '', cell: 'A1', var: '' }); renderAll(); return; }
+    const rb = act.closest('[data-rb]');
+    if (rb && a === 'del-rb') { C().templates[ti].reads_before.splice(+rb.dataset.rb, 1); renderAll(); return; }
+    const wr = act.closest('[data-wr]');
+    if (wr && a === 'del-wr') { C().templates[ti].writes.splice(+wr.dataset.wr, 1); renderAll(); return; }
+  }
+});
+
+/* wmode 切换不用整体重绘，直接交换显示 */
+document.addEventListener('change', e => {
+  if (e.target.matches('[data-f="sqlfile"]')) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';  // 允许重复选择同一文件
+    if (!file) return;
+    const card = e.target.closest('[data-sql]');
+    const ta = card && card.querySelector('[data-f="sql"]');
+    if (!ta) return;
+    const rd = new FileReader();
+    rd.onload = () => { ta.value = rd.result; syncGutEl(ta); ta.focus(); };
+    rd.onerror = () => toast('文件读取失败：' + file.name, 'err');
+    rd.readAsText(file, 'utf-8');
+    return;
+  }
+  if (e.target.matches('[data-f="sqlmode"]')) {
+    const card = e.target.closest('[data-sql]');
+    const isFile = e.target.value === 'file';
+    card.querySelector('.code').style.display = isFile ? 'none' : '';
+    card.querySelector('.sqlpath-row').style.display = isFile ? 'flex' : 'none';
+    card.querySelector('[data-act="import-sql"]').style.display = isFile ? 'none' : '';
+    return;
+  }
+  if (e.target.matches('[data-f="wmode"]')) {
+    const row = e.target.closest('[data-wr]');
+    const v = row.querySelector('[data-f="wvar"]'), m = row.querySelector('[data-f="wmerge"]');
+    if (e.target.value === 'merge') { v.style.display = 'none'; m.style.display = ''; }
+    else { m.style.display = 'none'; v.style.display = ''; }
+  }
+});
+
+function rebuildCron() {
+  const cyc = g('f-cron-cycle').value;
+  if (cyc === 'custom') return;  // 自定义：直接手写 cron，不覆盖
+  const [H, M] = (g('f-cron-time').value || '09:00').split(':').map(Number);
+  const mi = M || 0, h = H || 0;
+  if (cyc === 'hourly') { g('f-cron').value = '0 * * * *'; return; }
+  if (cyc === 'weekly') { g('f-cron').value = `${mi} ${h} * * ${g('f-cron-week').value || '1'}`; return; }
+  if (cyc === 'monthly') { g('f-cron').value = `${mi} ${h} ${g('f-cron-day').value || '1'} * *`; return; }
+  if (cyc === 'quarterly') { g('f-cron').value = `${mi} ${h} ${g('f-cron-day').value || '1'} 1,4,7,10 *`; return; }
+  g('f-cron').value = `${mi} ${h} * * ${{ workday: '1-5', daily: '*' }[cyc]}`;
+}
+
+function syncCronExtras() {
+  const cyc = g('f-cron-cycle').value;
+  g('f-cron-week').style.display = cyc === 'weekly' ? '' : 'none';
+  g('f-cron-day').style.display = (cyc === 'monthly' || cyc === 'quarterly') ? '' : 'none';
+  g('f-cron-day').title = cyc === 'quarterly'
+    ? '每年 1 / 4 / 7 / 10 月的所选日期执行'
+    : '1–31；当月无此日期则不触发（如 2 月无 30 日）';
+  g('f-cron-time').disabled = cyc === 'hourly' || cyc === 'custom';
+  g('cronRow').style.display = cyc === 'custom' ? '' : 'none';
+}
+
+g('f-cron-cycle').addEventListener('change', () => {
+  const cyc = g('f-cron-cycle').value;
+  if (cyc !== 'custom' && cyc !== 'hourly') {
+    /* 从自定义切回预设周期时，把手写 cron 的时/分带回执行时间 */
+    const p = g('f-cron').value.trim().split(/\s+/);
+    if (p.length === 5 && /^\d{1,2}$/.test(p[0]) && /^\d{1,2}$/.test(p[1])) {
+      g('f-cron-time').value = `${String(+p[1]).padStart(2, '0')}:${String(+p[0]).padStart(2, '0')}`;
+    }
+  }
+  syncCronExtras();
+  rebuildCron();
+});
+g('f-cron-time').addEventListener('change', rebuildCron);
+g('f-cron-week').addEventListener('change', rebuildCron);
+g('f-cron-day').addEventListener('input', rebuildCron);
+g('f-py-code').addEventListener('input', e => syncGut('py-gut', e.target));
+
+/* ---------------- 保存 / 删除 / 试运行 ---------------- */
+async function save() {
+  collect();
+  if (!T.name) { toast('请填写任务名称', 'err'); g('f-name').focus(); return null; }
+  /* 提交前清理空行（编辑界面上保留空行，只有保存时才剔除） */
+  const payload = JSON.parse(JSON.stringify(T));
+  delete payload.cleaned;
+  const c = payload.config;
+  c.wait_files = (c.wait_files || []).filter(x => x.path);
+  c.excel_reads = (c.excel_reads || []).filter(x => x.path && x.var);
+  c.templates = (c.templates || []).filter(x => x.path).map(t => ({
+    ...t,
+    reads_before: (t.reads_before || []).filter(x => x.file && x.var),
+    writes: (t.writes || []).filter(x => x.sheet && (x.var || (x.merge && x.merge.length)))
+  }));
+  const url = T.id ? `/api/tasks/${T.id}` : '/api/tasks';
+  const saved = await api(url, { method: T.id ? 'PUT' : 'POST', body: payload });
+  T.id = saved.id || T.id;
+  T.cleaned = true;
+  history.replaceState(null, '', `/console.html?id=${T.id}`);
+  g('btnDelete').style.display = '';
+  toast('计划已保存');
+  return T.id;
+}
+g('btnSave').onclick = () => save().catch(e => toast(e.message, 'err'));
+g('btnSave2').onclick = () => save().catch(e => toast(e.message, 'err'));
+
+g('btnDelete').onclick = async () => {
+  if (!T.id) return;
+  if (await confirmModal('删除执行计划', `确定删除「${T.name}」吗？其历史运行记录将一并删除。`)) {
+    await api(`/api/tasks/${T.id}`, { method: 'DELETE' });
+    location.href = '/';
+  }
+};
+
+async function runTrial() {
+  const id = await save();
+  if (!id) return;
+  await api(`/api/tasks/${id}/run`, { method: 'POST' });
+  openDrawer(T.name);
+  setTimeout(() => pollLatest(id), 900);
+}
+g('btnRun').onclick = () => runTrial().catch(e => toast(e.message, 'err'));
+g('btnRun2').onclick = () => runTrial().catch(e => toast(e.message, 'err'));
+
+/* ---------------- 日志抽屉轮询 ---------------- */
+function openDrawer(title) {
+  g('drawer').classList.add('show');
+  g('run-title').textContent = title;
+  g('run-badge').textContent = '运行中';
+  g('run-badge').className = 'badge';
+  g('drawer-body').textContent = '任务已提交，等待执行…';
+}
+g('drawer-close').onclick = () => { g('drawer').classList.remove('show'); clearInterval(pollTimer); };
+
+function colorLog(text) {
+  return esc(text).split('\n').map(l => {
+    if (l.includes('[ERROR]') || l.includes('Traceback')) return `<span class="ln-err">${l}</span>`;
+    if (l.includes('[WARN]')) return `<span class="ln-warn">${l}</span>`;
+    return l;
+  }).join('\n');
+}
+
+async function pollLatest(taskId) {
+  clearInterval(pollTimer);
+  let lastLen = 0;
+  pollTimer = setInterval(async () => {
+    try {
+      const run = await api(`/api/runs/latest/${taskId}`);
+      if (!run || run.ok === false) return;
+      g('drawer-body').innerHTML = colorLog(run.log || '(暂无日志)');
+      const body = g('drawer-body'); body.scrollTop = body.scrollHeight;
+      if (run.status !== 'running') {
+        clearInterval(pollTimer);
+        const b = g('run-badge');
+        b.textContent = run.status === 'success' ? '成功' : '失败';
+        b.className = 'badge ' + run.status;
+        toast(run.status === 'success' ? '试运行成功' : '试运行失败，请查看日志', run.status === 'success' ? 'ok' : 'err');
+      }
+    } catch (e) { /* 轮询中忽略瞬时错误 */ }
+  }, 1500);
+}
+
+/* ---------------- 初始化 ---------------- */
+async function init() {
+  dsList = await api('/api/datasources');
+  if (qsId) {
+    const t = await api('/api/tasks/' + qsId);
+    T = { ...blankTask(), ...t, config: { ...blankTask().config, ...(t.config || {}) } };
+    T.config.notify = { ...blankTask().config.notify, ...(t.config?.notify || {}) };
+  }
+  renderAll();
+}
+init().catch(e => toast(e.message, 'err'));
+</script>
+</body>
+</html>

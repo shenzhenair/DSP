@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>执行总览 · 数据调度平台</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="app">
+  <div id="sidebarMount"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <div>
+        <span class="page-t">执行总览</span>
+        <span class="page-s">全部计划的运行情况</span>
+      </div>
+      <div class="top-actions">
+        <button class="btn ghost" id="refreshBtn">刷新</button>
+        <a class="btn primary" href="/console.html">新建执行计划</a>
+      </div>
+    </header>
+
+    <div class="content">
+      <div class="kpis" id="kpis"></div>
+
+      <div class="panel">
+        <div class="panel-h">
+          <div>
+            <div class="ttl">执行情况列表</div>
+            <div class="sub" id="listSub">加载中…</div>
+          </div>
+          <div class="tabs" id="tabs"></div>
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input type="text" id="search" placeholder="搜索任务名称 / 负责人 / 分组">
+          </div>
+        </div>
+        <div class="twrap">
+          <div class="thead" style="grid-template-columns:minmax(200px,1.5fr) 120px 130px 120px 76px 96px 104px 176px">
+            <span>任务名称</span><span>任务分组</span><span>调度周期</span><span>上次执行</span>
+            <span>耗时</span><span>执行状态</span><span>近 7 次</span><span style="text-align:right">操作</span>
+          </div>
+          <div id="rows"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+<script src="/js/common.js"></script>
+<script>
+mountSidebar('overview');
+
+const state = { tab: 'all', kw: '', tasks: [], kpi: null };
+const TABS = [
+  { k: 'all', n: '全部' }, { k: 'running', n: '运行中' }, { k: 'success', n: '成功' },
+  { k: 'failed', n: '失败' }, { k: 'paused', n: '已停用' }, { k: 'never', n: '未执行' }
+];
+
+function taskStatus(t) {
+  if (t.running) return 'running';
+  if (!t.enabled) return 'paused';
+  return t.last_status || 'never';
+}
+
+function renderKpi() {
+  const k = state.kpi;
+  const cards = [
+    { t: '今日执行总数', v: k.today_total, u: '次', cls: 'acc' },
+    { t: '执行成功', v: k.today_success, u: `次 · ${k.success_rate}%`, cls: 'ok' },
+    { t: '执行失败', v: k.today_failed, u: '次', cls: 'err' },
+    { t: '运行中', v: k.running, u: '个任务', cls: 'run' },
+    { t: '已启用计划', v: k.enabled, u: '个', cls: '' }
+  ];
+  document.getElementById('kpis').innerHTML = cards.map(c => `
+    <div class="kpi ${c.cls}">
+      <div class="kpi-t">${c.t}</div>
+      <div class="kpi-v">${c.v}<small>${c.u}</small></div>
+    </div>`).join('');
+}
+
+function bars(hist) {
+  if (!hist || !hist.length) return '<span class="cell muted">无记录</span>';
+  const okc = hist.filter(v => v === 'success').length;
+  const rate = Math.round(okc / hist.length * 100);
+  return `<div class="bars">${hist.map(v => `<i class="${v}"></i>`).join('')}<span class="rate">${rate}%</span></div>`;
+}
+
+function filtered() {
+  return state.tasks.filter(t => {
+    if (state.tab !== 'all' && taskStatus(t) !== state.tab) return false;
+    if (state.kw) {
+      const k = state.kw.toLowerCase();
+      return [t.name, t.owner, t.grp].some(x => (x || '').toLowerCase().includes(k));
+    }
+    return true;
+  });
+}
+
+function renderTabs() {
+  document.getElementById('tabs').innerHTML = TABS.map(d => {
+    const c = d.k === 'all' ? state.tasks.length : state.tasks.filter(t => taskStatus(t) === d.k).length;
+    return `<button class="tab ${state.tab === d.k ? 'active' : ''}" data-tab="${d.k}">${d.n}<span class="n">${c}</span></button>`;
+  }).join('');
+}
+
+function renderRows() {
+  const list = filtered();
+  const box = document.getElementById('rows');
+  if (!list.length) {
+    box.innerHTML = `<div class="empty"><b>没有匹配的执行计划</b>调整筛选条件或新建一个执行计划</div>`;
+  } else {
+    box.innerHTML = list.map(t => {
+      const st = taskStatus(t);
+      const stInfo = STATUS[st === 'paused' ? 'never' : st] || { cls: 'paused', txt: '已停用' };
+      const stTxt = st === 'paused' ? '已停用' : stInfo.txt;
+      return `
+      <div class="trow" style="grid-template-columns:minmax(200px,1.5fr) 120px 130px 120px 76px 96px 104px 176px" data-id="${t.id}">
+        <div class="tname"><b data-go>${esc(t.name)}</b><span>#${String(t.id).padStart(4,'0')} · 负责人 ${esc(t.owner || '—')}</span></div>
+        <div class="cell">${esc(t.grp || '—')}</div>
+        <div class="cell">${esc(cronText(t.cron))}</div>
+        <div class="cell">${fmtTime(t.last_run_at)}</div>
+        <div class="cell mono ${t.last_duration == null ? 'muted' : ''}">${fmtDuration(t.last_duration)}</div>
+        <div class="cell"><span class="pill ${st === 'paused' ? 'paused' : stInfo.cls}"><span class="d"></span>${stTxt}</span></div>
+        <div class="cell">${bars(t.hist)}</div>
+        <div class="ops">
+          <button class="op" data-op="run" ${t.running || !t.perm?.run ? 'disabled' : ''} ${t.perm?.run ? '' : 'title="仅创建人、高级用户或管理员可运行"'}>${ICO.play}运行</button>
+          <button class="op" data-op="log">${ICO.log}日志</button>
+          <button class="op ${t.enabled ? '' : 'toggle off'}" data-op="toggle" ${t.perm?.toggle ? 'title="启用/停用"' : 'disabled title="仅创建人、高级用户或管理员可启停"'}>${t.enabled ? '停用' : '启用'}</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('listSub').textContent = `共 ${list.length} / ${state.tasks.length} 个计划`;
+}
+
+async function load() {
+  try {
+    const data = await api('/api/overview');
+    state.tasks = data.tasks; state.kpi = data.kpi;
+    renderKpi(); renderTabs(); renderRows();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function runNow(id, btn) {
+  try {
+    await api(`/api/tasks/${id}/run`, { method: 'POST' });
+    toast('已触发手动运行，可在「运行记录」查看实时日志');
+    setTimeout(load, 600);
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+document.getElementById('tabs').addEventListener('click', e => {
+  const b = e.target.closest('[data-tab]'); if (!b) return;
+  state.tab = b.dataset.tab; renderTabs(); renderRows();
+});
+document.getElementById('search').addEventListener('input', e => { state.kw = e.target.value.trim(); renderRows(); });
+document.getElementById('refreshBtn').addEventListener('click', () => { load(); toast('已刷新'); });
+document.getElementById('rows').addEventListener('click', async e => {
+  const row = e.target.closest('.trow'); if (!row) return;
+  const id = +row.dataset.id;
+  const op = e.target.closest('[data-op]');
+  if (op) {
+    e.preventDefault();
+    if (op.dataset.op === 'run') return runNow(id, op);
+    if (op.dataset.op === 'log') return location.href = `/monitor.html?task_id=${id}`;
+    if (op.dataset.op === 'toggle') {
+      const t = state.tasks.find(x => x.id === id);
+      await api(`/api/tasks/${id}/enabled`, { method: 'POST', body: { enabled: !t.enabled } });
+      toast(t.enabled ? '计划已停用' : '计划已启用');
+      return load();
+    }
+  }
+  if (e.target.hasAttribute('data-go')) location.href = `/console.html?id=${id}`;
+});
+
+load();
+setInterval(() => { if (state.tasks.some(t => t.running)) load(); }, 5000);
+</script>
+</body>
+</html>

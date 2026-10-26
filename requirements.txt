@@ -1,0 +1,9 @@
+Flask>=3.0
+APScheduler>=3.10
+openpyxl>=3.1
+requests>=2.31
+oracledb>=2.0
+# Windows 上需要 Excel 公式重算时安装（需本机装有 Excel）：
+# pywin32>=306
+# 连接 MySQL 数据源时安装：
+# pymysql>=1.1

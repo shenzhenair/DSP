@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据源管理 · 数据调度平台</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="app">
+  <div id="sidebarMount"></div>
+  <div class="main">
+    <header class="topbar">
+      <div><span class="page-t">数据源管理</span><span class="page-s">Oracle / SQLite / MySQL 连接配置</span></div>
+      <div class="top-actions"><button class="btn primary" id="btnNew">新建数据源</button></div>
+    </header>
+    <div class="content">
+      <div class="panel">
+        <div class="twrap">
+          <div class="thead" style="grid-template-columns:minmax(180px,1.3fr) 90px minmax(260px,2fr) minmax(140px,1fr) 230px">
+            <span>数据源名称</span><span>类型</span><span>连接信息</span><span>备注</span><span style="text-align:right">操作</span>
+          </div>
+          <div id="rows"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div class="modal-mask" id="modal">
+  <div class="modal">
+    <div class="modal-h" id="mTitle">新建数据源</div>
+    <div class="modal-b">
+      <div class="f-grid" style="gap:12px">
+        <div class="fld"><label>数据源名称<span class="req">*</span></label><input class="inp" id="m-name" placeholder="如：JCDB（经营监控库）"></div>
+        <div class="fld"><label>类型</label>
+          <select class="sel" id="m-type">
+            <option value="oracle">Oracle（oracledb，支持 Thick）</option>
+            <option value="sqlite">SQLite（本地文件库）</option>
+            <option value="mysql">MySQL（pymysql）</option>
+          </select></div>
+        <div id="cfg-oracle">
+          <div class="f-grid c2 gap10">
+            <div class="fld"><label>用户名</label><input class="inp" id="o-user"></div>
+            <div class="fld"><label>密码</label><input class="inp" id="o-pwd" type="password" placeholder="保存时按原文存储"></div>
+            <div class="fld"><label>主机</label><input class="inp" id="o-host" placeholder="10.x.x.x"></div>
+            <div class="fld"><label>端口</label><input class="inp" id="o-port" value="1521"></div>
+            <div class="fld"><label>服务名 (SERVICE_NAME)</label><input class="inp" id="o-service" placeholder="JCDB"></div>
+            <div class="fld"><label>Thick 客户端目录（可空）</label><input class="inp mono" id="o-client" placeholder="如 C:\instantclient_19_x"></div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.3px;color:var(--text-2)">
+            <input type="checkbox" id="o-thick"> 启用 Thick 模式（兼容老版本 Oracle，等价旧脚本 init_oracle_client）</label>
+        </div>
+        <div id="cfg-sqlite" style="display:none">
+          <div class="fld"><label>数据库文件路径</label><input class="inp mono" id="s-path" placeholder="C:\path\to\db.sqlite"></div>
+        </div>
+        <div id="cfg-mysql" style="display:none">
+          <div class="f-grid c2 gap10">
+            <div class="fld"><label>主机</label><input class="inp" id="q-host"></div>
+            <div class="fld"><label>端口</label><input class="inp" id="q-port" value="3306"></div>
+            <div class="fld"><label>用户名</label><input class="inp" id="q-user"></div>
+            <div class="fld"><label>密码</label><input class="inp" id="q-pwd" type="password"></div>
+            <div class="fld" style="grid-column:1/-1"><label>数据库名</label><input class="inp" id="q-db"></div>
+          </div>
+        </div>
+        <div class="fld"><label>备注</label><input class="inp" id="m-remark"></div>
+      </div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" id="mCancel">取消</button>
+      <button class="btn primary" id="mSave">保存</button>
+    </div>
+  </div>
+</div>
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="/js/common.js"></script>
+<script>
+mountSidebar('datasources');
+let list = [], editing = null;
+
+function connSummary(d) {
+  const c = d.config || {};
+  if (d.db_type === 'oracle') return `${esc(c.user || '—')} @ ${esc(c.host || '?')}:${esc(c.port || 1521)}/${esc(c.service || '?')}${c.thick ? ' · Thick' : ''}`;
+  if (d.db_type === 'sqlite') return `<span class="mono" style="font-size:11.4px">${esc(c.path || '—')}</span>`;
+  return `${esc(c.user || '—')} @ ${esc(c.host || '?')}:${esc(c.port || 3306)}/${esc(c.database || c.service || '?')}`;
+}
+
+async function load() {
+  list = await api('/api/datasources');
+  document.getElementById('rows').innerHTML = list.map(d => `
+    <div class="trow" style="grid-template-columns:minmax(180px,1.3fr) 90px minmax(260px,2fr) minmax(140px,1fr) 230px">
+      <div class="tname"><b>${esc(d.name)}</b><span>#${String(d.id).padStart(3,'0')} · 创建人 ${esc(d.created_by_name || '—')}</span></div>
+      <div class="cell"><span class="pill ${d.db_type === 'oracle' ? 'running' : 'ok'}"><span class="d"></span>${d.db_type.toUpperCase()}</span></div>
+      <div class="cell mono" style="font-size:11.4px">${connSummary(d)}</div>
+      <div class="cell">${esc(d.remark || '—')}</div>
+      <div class="ops">
+        <button class="op" data-op="test" data-id="${d.id}">测试连接</button>
+        <button class="op" data-op="edit" data-id="${d.id}" ${d.perm?.edit ? '' : 'disabled title="仅创建人、高级用户或管理员可编辑"'}>${ICO.edit}编辑</button>
+        <button class="op" data-op="del" data-id="${d.id}" style="color:var(--err)" ${d.perm?.del ? '' : 'disabled title="仅创建人或管理员可删除"'}>${ICO.trash}删除</button>
+      </div>
+    </div>`).join('') || '<div class="empty"><b>暂无数据源</b>点击右上角新建</div>';
+}
+
+function openModal(d) {
+  editing = d;
+  document.getElementById('mTitle').textContent = d ? '编辑数据源' : '新建数据源';
+  document.getElementById('m-name').value = d?.name || '';
+  document.getElementById('m-type').value = d?.db_type || 'oracle';
+  document.getElementById('m-remark').value = d?.remark || '';
+  const c = d?.config || {};
+  document.getElementById('o-user').value = c.user || '';
+  document.getElementById('o-pwd').value = c.password && !String(c.password).startsWith('*') ? c.password : '';
+  document.getElementById('o-host').value = c.host || '';
+  document.getElementById('o-port').value = c.port || 1521;
+  document.getElementById('o-service').value = c.service || '';
+  document.getElementById('o-client').value = c.client_dir || '';
+  document.getElementById('o-thick').checked = !!c.thick;
+  document.getElementById('s-path').value = c.path || '';
+  document.getElementById('q-host').value = c.host || '';
+  document.getElementById('q-port').value = c.port || 3306;
+  document.getElementById('q-user').value = c.user || '';
+  document.getElementById('q-pwd').value = c.password || '';
+  document.getElementById('q-db').value = c.database || c.service || '';
+  syncType();
+  document.getElementById('modal').classList.add('show');
+}
+function closeModal() { document.getElementById('modal').classList.remove('show'); }
+
+function syncType() {
+  const t = document.getElementById('m-type').value;
+  document.getElementById('cfg-oracle').style.display = t === 'oracle' ? '' : 'none';
+  document.getElementById('cfg-sqlite').style.display = t === 'sqlite' ? '' : 'none';
+  document.getElementById('cfg-mysql').style.display = t === 'mysql' ? '' : 'none';
+}
+document.getElementById('m-type').addEventListener('change', syncType);
+document.getElementById('btnNew').onclick = () => openModal(null);
+document.getElementById('mCancel').onclick = closeModal;
+
+document.getElementById('mSave').onclick = async () => {
+  const t = document.getElementById('m-type').value;
+  const data = { id: editing?.id, name: document.getElementById('m-name').value.trim(),
+    db_type: t, remark: document.getElementById('m-remark').value.trim(), config: {} };
+  if (!data.name) return toast('请填写数据源名称', 'err');
+  if (t === 'oracle') data.config = {
+    user: gv('o-user'), password: gv('o-pwd'), host: gv('o-host'),
+    port: +gv('o-port') || 1521, service: gv('o-service'),
+    thick: document.getElementById('o-thick').checked, client_dir: gv('o-client')
+  };
+  if (t === 'sqlite') data.config = { path: gv('s-path') };
+  if (t === 'mysql') data.config = {
+    host: gv('q-host'), port: +gv('q-port') || 3306, user: gv('q-user'),
+    password: gv('q-pwd'), database: gv('q-db')
+  };
+  try {
+    await api('/api/datasources', { method: 'POST', body: data });
+    closeModal(); toast('已保存'); load();
+  } catch (e) { toast(e.message, 'err'); }
+  function gv(id) { return document.getElementById(id).value.trim(); }
+};
+
+document.getElementById('rows').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-op]'); if (!btn) return;
+  const id = +btn.dataset.id, d = list.find(x => x.id === id);
+  if (btn.dataset.op === 'edit') return openModal(d);
+  if (btn.dataset.op === 'del') {
+    if (await confirmModal('删除数据源', `确定删除「${d.name}」吗？引用它的任务在执行时会报错。`)) {
+      await api(`/api/datasources/${id}`, { method: 'DELETE' });
+      toast('已删除'); load();
+    }
+    return;
+  }
+  if (btn.dataset.op === 'test') {
+    const old = btn.textContent; btn.disabled = true; btn.textContent = '测试中…';
+    const r = await api(`/api/datasources/${id}/test`, { method: 'POST' }).catch(err => ({ ok: false, error: err.message }));
+    btn.disabled = false; btn.textContent = old;
+    toast(r.ok ? `连接成功：${r.result}` : `连接失败：${r.error}`, r.ok ? 'ok' : 'err');
+  }
+});
+
+load();
+</script>
+</body>
+</html>

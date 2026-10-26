@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>运行记录 · 数据调度平台</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="app">
+  <div id="sidebarMount"></div>
+  <div class="main">
+    <header class="topbar">
+      <div><span class="page-t">运行记录</span><span class="page-s">历史执行记录与实时日志</span></div>
+      <div class="top-actions">
+        <select class="sel" id="f-task" style="width:230px"></select>
+        <button class="btn ghost" id="btnRefresh">刷新</button>
+      </div>
+    </header>
+    <div class="content">
+      <div class="panel">
+        <div class="twrap">
+          <div class="thead" style="grid-template-columns:64px minmax(170px,1.4fr) 70px 150px 86px 90px minmax(180px,1.4fr) 90px">
+            <span>#</span><span>任务</span><span>触发</span><span>开始时间</span><span>耗时</span><span>状态</span><span>错误 / 产出</span><span style="text-align:right">操作</span>
+          </div>
+          <div id="rows"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px 12px">
+          <span class="hint" style="color:var(--sub);font-size:11.5px" id="pageInfo"></span>
+          <div style="display:flex;gap:8px">
+            <button class="btn ghost" id="btnPrev">上一页</button>
+            <button class="btn ghost" id="btnNext">下一页</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="logModal">
+  <div class="modal" style="width:860px">
+    <div class="modal-h"><span id="logTitle">执行日志</span><span class="pill" id="logPill" style="margin-left:10px"></span></div>
+    <div class="modal-b">
+      <div id="logOutputs" style="margin-bottom:10px;font-size:11.8px;color:var(--sub)"></div>
+      <div class="code-block" id="logText" style="max-height:52vh"></div>
+    </div>
+    <div class="modal-f"><button class="btn primary" id="logClose">关闭</button></div>
+  </div>
+</div>
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="/js/common.js"></script>
+<script>
+mountSidebar('monitor');
+const params = new URLSearchParams(location.search);
+let taskFilter = params.get('task_id') || '';
+let tasks = [];
+
+async function loadTasks() {
+  const data = await api('/api/overview');
+  tasks = data.tasks;
+  document.getElementById('f-task').innerHTML =
+    '<option value="">全部任务</option>' +
+    tasks.map(t => `<option value="${t.id}" ${String(t.id) === String(taskFilter) ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+}
+
+function colorLog(text) {
+  return esc(text || '(无日志)').split('\n').map(l => {
+    if (l.includes('[ERROR]') || l.includes('Traceback')) return `<span class="ln-err">${l}</span>`;
+    if (l.includes('[WARN]')) return `<span class="ln-warn">${l}</span>`;
+    return l;
+  }).join('\n');
+}
+
+let page = 1;
+const PAGE_SIZE = 10;
+
+async function loadRuns() {
+  const offset = (page - 1) * PAGE_SIZE;
+  const q = new URLSearchParams({ limit: PAGE_SIZE, offset });
+  if (taskFilter) q.set('task_id', taskFilter);
+  const resp = await fetch('/api/runs?' + q, { cache: 'no-store' });
+  const runs = await resp.json();
+  const total = parseInt(resp.headers.get('X-Total-Count') || '0', 10);
+  const maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (page > maxPage) { page = maxPage; return loadRuns(); }  // 当前页被删空时回退
+  document.getElementById('rows').innerHTML = runs.map(r => {
+    const st = STATUS[r.status] || { cls: 'never', txt: r.status };
+    const detail = r.status === 'failed'
+      ? `<span style="color:var(--err)">${esc((r.error || '').slice(0, 80))}</span>`
+      : (r.outputs && r.outputs.length ? `<span style="color:var(--ok)">${r.outputs.length} 个产出文件</span>` : '<span class="muted-link">—</span>');
+    return `
+    <div class="trow" style="grid-template-columns:64px minmax(170px,1.4fr) 70px 150px 86px 90px minmax(180px,1.4fr) 90px">
+      <div class="cell mono muted">#${r.id}</div>
+      <div class="tname"><b data-log="${r.id}">${esc(r.task_name)}</b></div>
+      <div class="cell">${r.trigger === 'manual' ? '手动' : '定时'}</div>
+      <div class="cell mono" style="font-size:11.4px">${esc(r.start_at || '—')}</div>
+      <div class="cell mono">${fmtDuration(r.duration_sec)}</div>
+      <div class="cell"><span class="pill ${st.cls}"><span class="d"></span>${st.txt}</span></div>
+      <div class="cell" style="white-space:normal">${detail}</div>
+      <div class="ops"><button class="op" data-log="${r.id}">${ICO.log}日志</button></div>
+    </div>`;
+  }).join('') || '<div class="empty"><b>暂无运行记录</b>在执行总览页手动运行一个任务试试</div>';
+  document.getElementById('pageInfo').textContent = `共 ${total} 条 · 第 ${page}/${maxPage} 页`;
+  document.getElementById('btnPrev').disabled = page <= 1;
+  document.getElementById('btnNext').disabled = page >= maxPage;
+  return runs.some(r => r.status === 'running');
+}
+
+async function showLog(id) {
+  const r = await api('/api/runs/' + id);
+  const st = STATUS[r.status] || { cls: 'never', txt: r.status };
+  document.getElementById('logTitle').textContent = `#${r.id} ${r.task_name}`;
+  document.getElementById('logPill').className = 'pill ' + st.cls;
+  document.getElementById('logPill').innerHTML = `<span class="d"></span>${st.txt} · ${esc(r.start_at || '')}`;
+  document.getElementById('logOutputs').innerHTML = (r.outputs || []).length
+    ? '<b style="color:var(--text)">产出文件：</b>' + r.outputs.map(p => `<div class="mono" style="word-break:break-all">${esc(p)}</div>`).join('')
+    : '';
+  document.getElementById('logText').innerHTML = colorLog(r.log);
+  document.getElementById('logModal').classList.add('show');
+}
+
+document.getElementById('rows').addEventListener('click', e => {
+  const b = e.target.closest('[data-log]'); if (b) showLog(+b.dataset.log);
+});
+document.getElementById('f-task').addEventListener('change', e => { taskFilter = e.target.value; page = 1; loadRuns(); });
+document.getElementById('btnRefresh').addEventListener('click', async () => { await loadRuns(); toast('已刷新'); });
+document.getElementById('btnPrev').addEventListener('click', () => { if (page > 1) { page--; loadRuns(); } });
+document.getElementById('btnNext').addEventListener('click', () => { page++; loadRuns(); });
+document.getElementById('logClose').onclick = () => document.getElementById('logModal').classList.remove('show');
+document.getElementById('logModal').addEventListener('click', e => { if (e.target.id === 'logModal') e.target.classList.remove('show'); });
+
+(async function init() {
+  await loadTasks();
+  const hasRunning = await loadRuns();
+  if (hasRunning) {
+    const t = setInterval(async () => {
+      const r = await loadRuns();
+      if (!r) clearInterval(t);
+      if (document.getElementById('logModal').classList.contains('show')) {
+        // 日志弹窗打开时不打断
+      }
+    }, 4000);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>我创建的 · 数据调度平台</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="app">
+  <div id="sidebarMount"></div>
+  <div class="main">
+    <header class="topbar">
+      <div><span class="page-t">我创建的</span><span class="page-s">我创建的执行计划，可编辑、运行、查看日志、启停与删除</span></div>
+      <div class="top-actions">
+        <a class="btn primary" href="/console.html">新建执行计划</a>
+      </div>
+    </header>
+
+    <div class="content">
+      <div class="panel">
+        <div class="panel-h">
+          <div>
+            <div class="ttl">我创建的执行计划</div>
+            <div class="sub" id="listSub">加载中…</div>
+          </div>
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input type="text" id="search" placeholder="搜索任务名称 / 负责人 / 分组">
+          </div>
+        </div>
+        <div class="twrap">
+          <div class="thead" style="grid-template-columns:minmax(200px,1.5fr) 120px 130px 120px 76px 96px 104px 216px">
+            <span>任务名称</span><span>任务分组</span><span>调度周期</span><span>上次执行</span>
+            <span>耗时</span><span>执行状态</span><span>近 7 次</span><span style="text-align:right">操作</span>
+          </div>
+          <div id="rows"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-mask" id="logModal">
+  <div class="modal" style="width:860px">
+    <div class="modal-h"><span id="logTitle">执行日志</span><span class="pill" id="logPill" style="margin-left:10px"></span></div>
+    <div class="modal-b">
+      <div id="logOutputs" style="margin-bottom:10px;font-size:11.8px;color:var(--sub)"></div>
+      <div class="code-block" id="logText" style="max-height:52vh"></div>
+    </div>
+    <div class="modal-f"><button class="btn primary" id="logClose">关闭</button></div>
+  </div>
+</div>
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script src="/js/common.js"></script>
+<script src="/js/mytasks.js"></script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>系统设置 · 数据调度平台</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="app">
+  <div id="sidebarMount"></div>
+  <div class="main">
+    <header class="topbar">
+      <div><span class="page-t">系统设置</span><span class="page-s">飞书通知与全局运行参数</span></div>
+      <div class="top-actions"><button class="btn primary" id="btnSave">保存设置</button></div>
+    </header>
+    <div class="content">
+
+      <section class="sec" id="feishu">
+        <div class="sec-h">
+          <div class="sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg></div>
+          <div class="sec-t">飞书通知</div>
+          <div class="sec-d">群自定义机器人 Webhook；任务可单独覆盖</div>
+          <div class="right"><span style="font-size:12.3px;color:var(--text-2)">总开关</span><label class="sw"><input type="checkbox" id="s-enabled"><span></span></label></div>
+        </div>
+        <div class="fld" style="margin-bottom:13px">
+          <label>Webhook 地址</label>
+          <input class="inp mono" id="s-webhook" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxxx">
+        </div>
+        <div class="f-grid c2" style="margin-bottom:13px">
+          <label style="display:flex;align-items:center;gap:9px;font-size:12.6px;color:var(--text-2);background:#f7f8fa;padding:10px 12px;border-radius:8px">
+            <input type="checkbox" id="s-ok"> 任务成功默认发送通知（任务内可覆盖）</label>
+          <label style="display:flex;align-items:center;gap:9px;font-size:12.6px;color:var(--text-2);background:#f7f8fa;padding:10px 12px;border-radius:8px">
+            <input type="checkbox" id="s-err"> 任务失败默认发送通知（任务内可覆盖）</label>
+        </div>
+        <button class="btn outline" id="btnTest">发送测试消息</button>
+        <div class="hint" style="margin-top:8px;color:var(--sub);font-size:11px">
+          注意：飞书机器人需开启「自定义关键词」或 IP 白名单等安全设置时，请按群机器人规则放行。
+        </div>
+      </section>
+
+      <section class="sec">
+        <div class="sec-h">
+          <div class="sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></div>
+          <div class="sec-t">Oracle 客户端全局默认</div>
+          <div class="sec-d">数据源未单独配置时使用此处默认值（等价旧脚本 oracledb.init_oracle_client）</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:9px;font-size:12.6px;color:var(--text-2);margin-bottom:12px">
+          <input type="checkbox" id="s-thick"> 默认启用 Thick 模式（连接老版本 Oracle 时需要，服务器需安装 Instant Client）</label>
+        <div class="fld">
+          <label>Instant Client 目录（可空，使用 PATH 中的客户端）</label>
+          <input class="inp mono" id="s-client" placeholder="如 C:\instantclient_19_18">
+        </div>
+      </section>
+
+      <section class="sec" id="svc">
+        <div class="sec-h">
+          <div class="sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+          <div class="sec-t">服务状态（心跳）</div>
+          <div class="sec-d">服务端每 <span class="mono">30</span> 秒自检一次；前端每 <span class="mono">15</span> 秒探测一次</div>
+          <div class="right"><span class="svc-pill" id="hPill"><span class="svc-dot"></span><span id="hPillTxt">检测中…</span></span></div>
+        </div>
+        <div class="f-grid c2" style="font-size:12.4px;color:var(--text-2);line-height:2.1">
+          <div>服务器时间：<span class="mono" id="hTime">—</span></div>
+          <div>已运行时长：<span class="mono" id="hUptime">—</span></div>
+          <div>最近心跳：<span class="mono" id="hLast">—</span></div>
+          <div>正在执行任务：<span class="mono" id="hRun">—</span></div>
+          <div style="grid-column:1/-1">服务日志：<span class="mono">logs/server.log</span>（按天轮转，保留 14 天）</div>
+        </div>
+      </section>
+
+      <section class="sec">
+        <div class="sec-h">
+          <div class="sec-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+          <div class="sec-t">运行说明</div>
+        </div>
+        <ul style="font-size:12.4px;color:var(--text-2);padding-left:18px;line-height:2">
+          <li>调度器随 Web 服务启动（APScheduler，时区 Asia/Shanghai），停用任务不会触发定时执行。</li>
+          <li>同一任务上次未执行完时，新的触发（含定时）会自动跳过，避免并发写同一文件。</li>
+          <li>心跳守护线程定期自检数据库与工作线程；运行超出「任务超时 + 5 分钟」的记录会在日志中预警。</li>
+          <li>服务端日志统一写入 <span class="mono">logs/server.log</span>：请求、任务执行、通知、心跳与异常均会留痕。</li>
+          <li>Excel 公式重算依赖 Windows 本机 Excel + pywin32；不具备时仅告警，不影响数据写入。</li>
+          <li>配置数据存于 <span class="mono">data/scheduler.db</span>，运行产物默认在 <span class="mono">data/outputs</span>。</li>
+        </ul>
+      </section>
+
+    </div>
+  </div>
+</div>
+<div class="toast-wrap" id="toastWrap"></div>
+<script src="/js/common.js"></script>
+<script>
+mountSidebar(location.hash === '#feishu' ? 'feishu' : 'settings');
+const $ = id => document.getElementById(id);
+
+async function load() {
+  const s = await api('/api/settings');
+  $('s-enabled').checked = s.feishu_enabled === 'true';
+  $('s-webhook').value = s.feishu_webhook || '';
+  $('s-ok').checked = s.notify_on_success === 'true';
+  $('s-err').checked = s.notify_on_failure === 'true';
+  $('s-thick').checked = s.oracle_thick === 'true';
+  $('s-client').value = s.oracle_client_dir || '';
+}
+function collect() {
+  return {
+    feishu_enabled: $('s-enabled').checked,
+    feishu_webhook: $('s-webhook').value.trim(),
+    notify_on_success: $('s-ok').checked,
+    notify_on_failure: $('s-err').checked,
+    oracle_thick: $('s-thick').checked,
+    oracle_client_dir: $('s-client').value.trim()
+  };
+}
+$('btnSave').onclick = async () => { await api('/api/settings', { method: 'PUT', body: collect() }); toast('设置已保存'); };
+$('btnTest').onclick = async () => {
+  const webhook = $('s-webhook').value.trim();
+  if (!webhook) return toast('请先填写 Webhook 地址', 'err');
+  const r = await api('/api/feishu/test', { method: 'POST', body: { webhook } }).catch(e => ({ ok: false, message: e.message }));
+  toast(r.ok ? '测试消息已发送' : ('发送失败：' + r.message), r.ok ? 'ok' : 'err');
+};
+load();
+
+/* 服务心跳详情 */
+function fmtUptime(sec) {
+  if (!sec && sec !== 0) return '—';
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return (h ? h + ' 小时 ' : '') + m + ' 分 ' + s + ' 秒';
+}
+async function loadHeartbeat() {
+  try {
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 8000);
+    const r = await fetch('/api/heartbeat?_=' + Date.now(), { cache: 'no-store', signal: ctrl.signal });
+    clearTimeout(to);
+    const d = await r.json();
+    if (!d.ok) throw new Error('bad resp');
+    $('hPill').classList.add('on'); $('hPill').classList.remove('off');
+    $('hPillTxt').textContent = '服务正常';
+    $('hTime').textContent = d.server_time || '—';
+    $('hUptime').textContent = fmtUptime(d.uptime_sec);
+    $('hLast').textContent = d.last_heartbeat || '—';
+    $('hRun').textContent = `${d.running} / ${d.workers}`;
+  } catch (e) {
+    $('hPill').classList.add('off'); $('hPill').classList.remove('on');
+    $('hPillTxt').textContent = '服务中断';
+  }
+}
+loadHeartbeat();
+setInterval(loadHeartbeat, 15000);
+</script>
+</body>
+</html>
